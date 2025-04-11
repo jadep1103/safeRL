@@ -1,1 +1,1 @@
-python main.py --name TRC-Point --seed 1 --env_name Safexp-PointGoal1-v0 --wandb
+python main.py --name TRC-Point --seed 1 --env_name SafetyPointGoal1-v0 --wandb
