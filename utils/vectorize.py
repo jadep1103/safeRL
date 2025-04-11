@@ -1,4 +1,4 @@
-from stable_baselines3.common.vec_env.subproc_vec_env import SubprocVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.callbacks import BaseCallback
 from utils.normalize import RunningMeanStd
 
@@ -99,13 +99,14 @@ class DobroSubprocVecEnv(SubprocVecEnv):
         self.obs_rms = RunningMeanStd(args.save_dir, self.observation_space.shape[0])
 
     def reset(self):
-        observations = super().reset()
+        observations, _ = super().reset()
         self.obs_rms.update(observations)
         norm_observations = self.obs_rms.normalize(observations)
         return norm_observations
 
     def step(self, actions):
-        observations, rewards, dones, infos = super().step(actions)
+        observations, rewards, terminateds, truncateds, infos = super().step(actions)
+        dones = np.logicalor(terminateds,truncateds)
         self.obs_rms.update(observations)
         norm_observations = self.obs_rms.normalize(observations)
         for info in infos:
@@ -126,9 +127,10 @@ class SingleEnvWrapper:
         return np.expand_dims(state, axis=0)
     
     def step(self, actions):
-        state, reward, done, info = self._env.step(actions[0])
+        state, reward, terminated, truncated, info = self._env.step(actions[0])
+        done = np.logicalor(terminated, truncated)
         if done:
             info['terminal_observation'] = state[:]
-            state = self._env.reset()
+            state, _ = self._env.reset()
         states = np.expand_dims(state, axis=0)
         return states, [reward], [done], [info]
