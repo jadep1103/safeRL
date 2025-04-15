@@ -30,14 +30,15 @@ RUN apt-get update && apt-get install -y \
 RUN pip install --upgrade pip
 
 # Install required Python packages
-RUN pip install --no-cache-dir\
+RUN pip install --no-cache-dir \
     safety-gymnasium==1.0.0 \
     torch>=2.3 \
+    tensorboard \
     swig \
-    gymnasium[box2d] \ 
     stable-baselines3 \
     requests \
     wandb
+RUN pip install --no-cache-dir "gymnasium[box2d]"
 
 # Default command
 CMD ["/bin/bash"]
