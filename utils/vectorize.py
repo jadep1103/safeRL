@@ -106,7 +106,7 @@ class DobroSubprocVecEnv(SubprocVecEnv):
 
     def step(self, actions):
         observations, rewards, terminateds, truncateds, infos = super().step(actions)
-        dones = np.logicalor(terminateds,truncateds)
+        dones = np.logical_or(terminateds,truncateds)
         self.obs_rms.update(observations)
         norm_observations = self.obs_rms.normalize(observations)
         for info in infos:
@@ -128,9 +128,10 @@ class SingleEnvWrapper:
     
     def step(self, actions):
         state, reward, terminated, truncated, info = self._env.step(actions[0])
-        done = np.logicalor(terminated, truncated)
+        done = np.logical_or(terminated, truncated)
         if done:
             info['terminal_observation'] = state[:]
+            
             state, _ = self._env.reset()
         states = np.expand_dims(state, axis=0)
         return states, [reward], [done], [info]

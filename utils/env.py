@@ -56,21 +56,21 @@ class GymEnv(gym.Env):
         print(f"[STATE] Final state shape: {state.shape}")
         return state
 
-    def getCost(self, h_dist):
-        h_coeff = 10.0
-        cost = 1.0 / (1.0 + np.exp(h_dist * h_coeff))
-        print(f"[COST] Hazard distance: {h_dist}, cost: {cost}")
-        return cost
+    # def getCost(self, h_dist):
+    #     h_coeff = 10.0
+    #     cost = 1.0 / (1.0 + np.exp(h_dist * h_coeff))
+    #     print(f"[COST] Hazard distance: {h_dist}, cost: {cost}")
+    #     return cost
 
-    def getHazardDist(self):
-        robot_pos = np.array(self._env.world.robot_pos())
-        min_dist = np.inf
-        for hazard_pos in self._env.hazards_pos:
-            dist = np.linalg.norm(hazard_pos[:2] - robot_pos[:2])
-            if dist < min_dist:
-                min_dist = dist
-        h_dist = min_dist - self.hazard_size
-        return h_dist
+    # def getHazardDist(self):
+    #     robot_pos = np.array(self._env.world.robot_pos())
+    #     min_dist = np.inf
+    #     for hazard_pos in self._env.hazards_pos:
+    #         dist = np.linalg.norm(hazard_pos[:2] - robot_pos[:2])
+    #         if dist < min_dist:
+    #             min_dist = dist
+    #     h_dist = min_dist - self.hazard_size
+    #     return h_dist
 
     def reset(self, verbose=False):
         print("[RESET] Resetting environment.")
@@ -98,9 +98,12 @@ class GymEnv(gym.Env):
             for i, r in enumerate(result):
                 print(f"  -> Element {i}: {type(r)}")
             print(f"[STEP] Raw result from env: {result}, len={len(result)}")
-            obs, r_t, term, trunc, info = result
+            obs, r_t, cost, term, trunc, info = result
             terminated = terminated or term
             truncated = truncated or trunc
+
+            if 'cost' not in info: 
+                info['cost'] = cost 
 
             if info.get('cost', 0) > 0:
                 num_cv += 1
@@ -113,11 +116,12 @@ class GymEnv(gym.Env):
                 break
 
         state = self.getState(obs)
-        h_dist = self.getHazardDist()
 
         info['goal_met'] = is_goal_met
-        info['cost'] = self.getCost(h_dist)
         info['num_cv'] = num_cv
+        info['cost_sum'] = info.get('cost_sum', 0.0)
+        info['cost_hazards'] = info.get('cost_hazards', 0.0)
+
 
         output = (state, reward, terminated, truncated, info)
         print(f"[STEP] Final output: {type(output)}, length={len(output)}")
