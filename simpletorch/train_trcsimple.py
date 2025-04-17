@@ -222,9 +222,13 @@ def train(args):
         }
 
         print(f"[DEBUG] log_data: {log_data}")
+        print("le caca est cuit")
+        print("[manual save] Forcing final save...")
+        agent.save()
 
         if args.wandb:
             wandb.log(log_data)
+
 
         if total_step - slack_step >= args.slack_freq and args.slack:
             slackbot.sendMsg(f"{project_name}\nname: {wandb.run.name}\nsteps: {total_step}\nlog: {log_data}")
