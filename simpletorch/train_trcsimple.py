@@ -17,6 +17,7 @@ if not PATH in sys.path:
 from slackbot import Slackbot
 from logger import Logger
 from agent import Agent
+from datetime import datetime
 import safety_gymnasium
 
 from stable_baselines3.common.vec_env.subproc_vec_env import SubprocVecEnv
@@ -247,7 +248,16 @@ def train(args):
 
 def test(args):
     # define Environment
-    env = safety_gymnasium.make(args.env_name)
+    #env = safety_gymnasium.make(args.env_name, render_mode='human')
+
+    #take offline video
+    now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    video_path = f"videos/{args.name}_{args.env_name}_{now}"
+    os.makedirs(video_path, exist_ok=True)
+
+    env = safety_gymnasium.make(args.env_name, render_mode="human")
+
+
     obs, info = env.reset(seed=args.seed)
     # set args value for env
     args.obs_dim = env.observation_space.shape[0]
@@ -261,9 +271,9 @@ def test(args):
     scores = []
     cvs = []
 
-    epochs = 100
+    epochs = 1
     for epoch in range(epochs):
-        state = env.reset()
+        state, _ = env.reset(seed = args.seed)
         done = False
         score = 0
         cv = 0
@@ -272,24 +282,28 @@ def test(args):
         while True:
             step += 1
             with torch.no_grad():
-                obs_tensor = torch.tensor(state, device=args.device, dtype=torch.float32)
+                obs_tensor = torch.from_numpy(np.array(state)).float().to(args.device)
+                #obs_tensor = torch.tensor(state, device=args.device, dtype=torch.float32)
                 action_tensor, clipped_action_tensor = agent.getAction(obs_tensor, False)
                 action = action_tensor.detach().cpu().numpy()
                 clipped_action = clipped_action_tensor.detach().cpu().numpy()
-            next_state, reward, done, info = env.step(clipped_action)
+            next_state, reward, cost, terminated, truncated, info = env.step(clipped_action)
             env.render()
 
             state = next_state
+            done = terminated or truncated
             score += reward
-            cv += info['num_cv']
+            cv += info.get('num_cv', 0)
+            #cv += info['num_cv']
 
             if done or step >= args.max_episode_steps:
                 break
+        print(f"[TEST] Score: {score:.3f} | Constraint Violations: {cv}")
         scores.append(score)
         cvs.append(cv)
         print(score, cv)
 
-    print(np.mean(scores), np.mean(cvs))
+    print(f"[TEST] Moyenne score: {np.mean(scores):.3f}, Moyenne CV: {np.mean(cvs)}")
     env.close()
 
 
