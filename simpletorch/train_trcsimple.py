@@ -14,7 +14,6 @@ if not PATH in sys.path:
 # =========================== #
 
 
-from slackbot import Slackbot
 from logger import Logger
 from agent import Agent
 from datetime import datetime
@@ -77,10 +76,6 @@ def train(args):
         wandb.run.name = f"{args.name}-{run_idx}"
         print(f"[DEBUG] wandb initialized: {wandb.run.name}")
 
-    # slackbot
-    if args.slack:
-        slackbot = Slackbot()
-        print("[DEBUG] Slackbot activated.")
 
     # for random seed
     np.random.seed(args.seed)
@@ -147,7 +142,7 @@ def train(args):
         step = 0
 
         while step < args.n_steps:
-            print(f"[DEBUG] Step {total_step} | Collecting transitions")
+            #print(f"[DEBUG] Step {total_step} | Collecting transitions")
             env_cnts += 1
             step += args.n_envs
             total_step += args.n_envs
@@ -155,12 +150,12 @@ def train(args):
             with torch.no_grad():
                 obs, _ = observations
                 obs_tensor = torch.tensor(obs, device=args.device, dtype=torch.float32).unsqueeze(0)
-                print(f"[DEBUG] obs_tensor shape: {obs_tensor.shape}")
+                #print(f"[DEBUG] obs_tensor shape: {obs_tensor.shape}")
 
                 action_tensor, clipped_action_tensor = agent.getAction(obs_tensor, True)
                 actions = action_tensor.cpu().numpy()
                 clipped_actions = clipped_action_tensor.cpu().numpy()
-                print(f"[DEBUG] Action taken: {clipped_actions}")
+                #print(f"[DEBUG] Action taken: {clipped_actions}")
 
             next_obs, reward, cost, terminated, truncated, info = vec_env.step(clipped_actions.squeeze(0))
             done = terminated or truncated
@@ -225,14 +220,24 @@ def train(args):
         print("le caca est cuit")
         print("[manual save] Forcing final save...")
         agent.save()
+        print("[DEBUG] Forcing final save of all logs...")
+        objective_logger.save()
+        cost_surrogate_logger.save()
+        v_loss_logger.save()
+        cost_v_loss_logger.save()
+        cost_var_v_loss_logger.save()
+        entropy_logger.save()
+        kl_logger.save()
+        score_logger.save()
+        eplen_logger.save()
+        cv_logger.save()
+        cost_logger.save()
+        print("[DEBUG] All logs saved successfully.")
+
 
         if args.wandb:
             wandb.log(log_data)
 
-
-        if total_step - slack_step >= args.slack_freq and args.slack:
-            slackbot.sendMsg(f"{project_name}\nname: {wandb.run.name}\nsteps: {total_step}\nlog: {log_data}")
-            slack_step += args.slack_freq
 
         if total_step - save_step >= args.save_freq:
             save_step += args.save_freq
@@ -259,7 +264,7 @@ def test(args):
     video_path = f"videos/{args.name}_{args.env_name}_{now}"
     os.makedirs(video_path, exist_ok=True)
 
-    env = safety_gymnasium.make(args.env_name, render_mode="human")
+    env = safety_gymnasium.make(args.env_name, render_mode="human",max_episode_steps=1000)
 
 
     obs, info = env.reset(seed=args.seed)
@@ -275,7 +280,7 @@ def test(args):
     scores = []
     cvs = []
 
-    epochs = 1
+    epochs = 100
     for epoch in range(epochs):
         state, _ = env.reset(seed = args.seed)
         done = False
@@ -295,13 +300,18 @@ def test(args):
             env.render()
 
             state = next_state
+            print("Terminated",terminated)
+            print("Truncated",truncated)
             done = terminated or truncated
             score += reward
             cv += info.get('num_cv', 0)
             #cv += info['num_cv']
-
+            print("caca",done)
             if done or step >= args.max_episode_steps:
                 break
+
+                
+
         print(f"[TEST] Score: {score:.3f} | Constraint Violations: {cv}")
         scores.append(score)
         cvs.append(cv)
