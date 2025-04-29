@@ -1,1 +1,1 @@
-python test.py --env SafetyPointGoal1-v0
+python test.py --env SafetyPointGoal1-v0 --episodes 10

@@ -1,0 +1,4 @@
+python multi_train_launcher.py
+python multi_test_launcher.py
+python generate_training_dashboard.py
+python generate_testing_dashboard.py

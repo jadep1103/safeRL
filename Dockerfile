@@ -22,6 +22,11 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     libpng-dev \
     git \
+    libgl1-mesa-glx \
+    libgl1-mesa-dri \
+    libosmesa6 \
+    libglu1-mesa \
+    x11-apps \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
