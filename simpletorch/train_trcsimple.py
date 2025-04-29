@@ -158,8 +158,26 @@ def train(args):
                 #print(f"[DEBUG] Action taken: {clipped_actions}")
 
             next_obs, reward, cost, terminated, truncated, info = vec_env.step(clipped_actions.squeeze(0))
+            if total_step < 200000:
+                reward *= 20
             done = terminated or truncated
             next_observations = (next_obs, info)
+
+            # ===== DEBUG PATCH =====
+            if total_step % 5000 == 0:
+                print("\n[DEBUG] ====== Step", total_step, "======")
+                print("[DEBUG] obs (first 5 dims):", obs[:5] if isinstance(obs, np.ndarray) else np.array(obs)[:5])
+                print("[DEBUG] reward:", reward)
+                print("[DEBUG] cost:", cost)
+                if isinstance(info, dict):
+                    if 'goal_distance' in info:
+                        print("[DEBUG] goal_distance:", info['goal_distance'])
+                    if 'cost' in info:
+                        print("[DEBUG] info cost field:", info['cost'])
+                    if 'num_cv' in info:
+                        print("[DEBUG] constraint violations (num_cv):", info['num_cv'])
+            # ========================
+
 
             reward_history[0].append(reward)
             cv_history[0].append(info.get('num_cv', 0))
