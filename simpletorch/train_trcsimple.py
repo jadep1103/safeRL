@@ -63,7 +63,7 @@ def getPaser():
     parser.add_argument('--max_kl', type=float, default=0.001, help='maximum kl divergence.')
     # constraint
     parser.add_argument('--cost_d', type=float, default=25.0/1000.0, help='constraint limit value.')
-    parser.add_argument('--cost_alpha', type=float, default=0.125, help='CVaR\'s alpha.')
+    parser.add_argument('--cost_alpha', type=float, default=0.3, help='CVaR\'s alpha.')
     return parser
 def train(args):
     print("[DEBUG] Starting training...")
@@ -159,7 +159,7 @@ def train(args):
 
             next_obs, reward, cost, terminated, truncated, info = vec_env.step(clipped_actions.squeeze(0))
             if total_step < 200000:
-                reward *= 20
+                reward *= 15
             done = terminated or truncated
             next_observations = (next_obs, info)
 
@@ -300,7 +300,7 @@ def test(args):
 
     epochs = 100
     for epoch in range(epochs):
-        state, _ = env.reset(seed = args.seed)
+        state, _ = env.reset()
         done = False
         score = 0
         cv = 0
@@ -318,13 +318,16 @@ def test(args):
             env.render()
 
             state = next_state
-            print("Terminated",terminated)
-            print("Truncated",truncated)
+            #print("Terminated",terminated)
+            #print("Truncated",truncated)
             done = terminated or truncated
             score += reward
-            cv += info.get('num_cv', 0)
+            #print(f"[DEBUG] info = {info}")
+            cv += info.get('cost_sum', 0)
+
+            #cv += info.get('num_cv', 0)
             #cv += info['num_cv']
-            print("caca",done)
+            #print("caca",done)
             if done or step >= args.max_episode_steps:
                 break
 
