@@ -12,7 +12,7 @@ Les agents ont été évalués dans des environnements vectorisés de [Safety-Gy
 
 ---
 
-## 👤 Auteurs
+## 👤 Groupe de projet
 
 - **Jade Piller-Cammal**  
   NI : 537 306 695
