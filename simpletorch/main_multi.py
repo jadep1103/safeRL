@@ -1,5 +1,4 @@
-##### Training and evaluation script for the TRC (Trust Region CVaR) algorithm (n_envs = 1 only) #####
-
+##### Training and evaluation script for the TRC (Trust Region CVaR) algorithm using vectorized environments (n_envs > 1) #####
 
 # ===== add python path ===== #
 import glob
@@ -21,9 +20,6 @@ from logger import Logger
 from agent import Agent
 from datetime import datetime
 import safety_gymnasium
-
-from stable_baselines3.common.vec_env.subproc_vec_env import SubprocVecEnv
-from stable_baselines3.common.env_util import make_vec_env
 import numpy as np
 import argparse
 import random
@@ -68,54 +64,55 @@ def getPaser():
     parser.add_argument('--cost_d', type=float, default=25.0/1000.0, help='constraint limit value.')
     parser.add_argument('--cost_alpha', type=float, default=0.125, help='CVaR\'s alpha.')
     return parser
-def train(args):
-    print("[DEBUG] Starting training...")
 
-    # wandb
+def train(args):
+    #print("[DEBUG] Starting training...")
+
     if args.wandb:
         project_name = '[TRC_torch] safety_gym'
         wandb.init(project=project_name, config=args)
         run_idx = wandb.run.name.split('-')[-1]
         wandb.run.name = f"{args.name}-{run_idx}"
-        print(f"[DEBUG] wandb initialized: {wandb.run.name}")
+        #print(f"[DEBUG] wandb initialized: {wandb.run.name}")
 
-
-    # for random seed
     np.random.seed(args.seed)
     random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    print("[DEBUG] Seeds set.")
+    #print("[DEBUG] Seeds set.")
 
-    # define Environment
+    # create vector env
     if args.n_envs == 1:
         vec_env = safety_gymnasium.make(args.env_name)
     else:
-        def make_env():
-            def _init():
-                return safety_gymnasium.make(args.env_name)
-            return _init
-        vec_env = make_vec_env(
-            env_id=make_env(), n_envs=args.n_envs, seed=args.seed,
-            vec_env_cls=SubprocVecEnv,
-            vec_env_kwargs={'start_method': 'spawn'},
-        )
-    print(f"[DEBUG] Environment {args.env_name} created.")
+        vec_env = safety_gymnasium.vector.make(args.env_name, num_envs=args.n_envs)
+    #print(f"[DEBUG] Environment {args.env_name} created.")
 
-    # set args value for env
-    args.obs_dim = vec_env.observation_space.shape[0]
-    args.action_dim = vec_env.action_space.shape[0]
-    args.action_bound_min = vec_env.action_space.low
-    args.action_bound_max = vec_env.action_space.high
-    print(f"[DEBUG] obs_dim: {args.obs_dim}, action_dim: {args.action_dim}")
+    # Extract dims
+    obs_sample = vec_env.reset(seed=args.seed)
+    if isinstance(obs_sample, tuple):
+        obs_sample = obs_sample[0]
+    if isinstance(obs_sample, list) and isinstance(obs_sample[0], dict):
+        sample_obs = np.concatenate([v.flatten() for v in obs_sample[0].values()])
+        args.obs_dim = sample_obs.shape[0]
+        obs = np.array([np.concatenate([v.flatten() for v in o.values()]) for o in obs_sample])
+    else:
+        obs = np.asarray(obs_sample)
+        args.obs_dim = obs.shape[1]
+    args.action_dim = vec_env.single_action_space.shape[0]
+    args.action_bound_min = vec_env.single_action_space.low
+    args.action_bound_max = vec_env.single_action_space.high
+    #print(f"[DEBUG] obs_dim: {args.obs_dim}, action_dim: {args.action_dim}")
 
-    # define agent
+    # agent & loggers
     agent = Agent(args)
-    print("[DEBUG] Agent initialized.")
-
-    # loggers
+    #print("[DEBUG] Agent initialized.")
+    score_logger = Logger(args.save_dir, 'score')
+    eplen_logger = Logger(args.save_dir, 'eplen')
+    cost_logger = Logger(args.save_dir, 'cost')
+    cv_logger = Logger(args.save_dir, 'cv')
     objective_logger = Logger(args.save_dir, 'objective')
     cost_surrogate_logger = Logger(args.save_dir, 'cost_surrogate')
     v_loss_logger = Logger(args.save_dir, 'v_loss')
@@ -123,20 +120,13 @@ def train(args):
     cost_var_v_loss_logger = Logger(args.save_dir, 'cost_var_v_loss')
     kl_logger = Logger(args.save_dir, 'kl')
     entropy_logger = Logger(args.save_dir, 'entropy')
-    score_logger = Logger(args.save_dir, 'score')
-    eplen_logger = Logger(args.save_dir, 'eplen')
-    cost_logger = Logger(args.save_dir, 'cost')
-    cv_logger = Logger(args.save_dir, 'cv')
-    print("[DEBUG] Loggers initialized.")
+    #print("[DEBUG] Loggers initialized.")
 
-    # training loop
-    observations = vec_env.reset(seed=args.seed)
     reward_history = [[] for _ in range(args.n_envs)]
     cost_history = [[] for _ in range(args.n_envs)]
     cv_history = [[] for _ in range(args.n_envs)]
     env_cnts = np.zeros(args.n_envs)
     total_step = 0
-    slack_step = 0
     save_step = 0
 
     while total_step < args.total_steps:
@@ -145,68 +135,57 @@ def train(args):
         step = 0
 
         while step < args.n_steps:
-            print(f"[DEBUG] Step {total_step} | Collecting transitions")
             env_cnts += 1
             step += args.n_envs
             total_step += args.n_envs
 
             with torch.no_grad():
-                obs, _ = observations
-                obs_tensor = torch.tensor(obs, device=args.device, dtype=torch.float32).unsqueeze(0)
-                #print(f"[DEBUG] obs_tensor shape: {obs_tensor.shape}")
-
+                obs_tensor = torch.from_numpy(obs).float().to(args.device)
                 action_tensor, clipped_action_tensor = agent.getAction(obs_tensor, True)
                 actions = action_tensor.cpu().numpy()
                 clipped_actions = clipped_action_tensor.cpu().numpy()
-                #print(f"[DEBUG] Action taken: {clipped_actions}")
 
-            next_obs, reward, cost, terminated, truncated, info = vec_env.step(clipped_actions.squeeze(0))
-            cv = info.get('cost_sum', 0)
-            done = terminated or truncated
-            next_observations = (next_obs, info)
-
-            # # ===== DEBUG PATCH =====
-            # if total_step % 5000 == 0:
-            #     print("\n[DEBUG] ====== Step", total_step, "======")
-            #     print("[DEBUG] obs (first 5 dims):", obs[:5] if isinstance(obs, np.ndarray) else np.array(obs)[:5])
-            #     print("[DEBUG] reward:", reward)
-            #     print("[DEBUG] cost:", cost)
-            #     if isinstance(info, dict):
-            #         if 'goal_distance' in info:
-            #             print("[DEBUG] goal_distance:", info['goal_distance'])
-            #         if 'cost' in info:
-            #             print("[DEBUG] info cost field:", info['cost'])
-            #         if 'num_cv' in info:
-            #             print("[DEBUG] constraint violations (num_cv):", info['num_cv'])
-            # # ========================
-
-
-            reward_history[0].append(reward)
-            cv_history[0].append(cv)
-            cost_history[0].append(cost)
-
-            fail = env_cnts[0] < args.max_episode_steps if done else False
-            terminal_obs = info.get('terminal_observation', next_obs) if done else next_obs
-            trajectories[0].append([obs, actions[0], reward, cost, done, fail, terminal_obs])
-
-            if done:
-                ep_len = len(reward_history[0])
-                score = np.sum(reward_history[0])
-                ep_cv = np.sum(cv_history[0])
-                cost_sum = np.sum(cost_history[0])
-
-                score_logger.write([ep_len, score])
-                eplen_logger.write([ep_len, ep_len])
-                cost_logger.write([ep_len, cost_sum])
-                cv_logger.write([ep_len, ep_cv])
-
-                reward_history[0].clear()
-                cost_history[0].clear()
-                cv_history[0].clear()
-                env_cnts[0] = 0
-                observations = vec_env.reset(seed=args.seed)
+            next_obs, reward, cost, terminated, truncated, info = vec_env.step(clipped_actions)
+            # transform observations
+            if isinstance(next_obs[0], dict):
+                next_obs_np = np.array([np.concatenate([v.flatten() for v in o.values()]) for o in next_obs])
             else:
-                observations = next_observations
+                next_obs_np = np.asarray(next_obs)
+
+            for i in range(args.n_envs):
+                reward_history[i].append(reward[i])
+                cost_history[i].append(cost[i])
+                cv = info["num_cv"][i] if "num_cv" in info and info["num_cv"] is not None else 0
+                cv_history[i].append(cv)
+                done = terminated[i] or truncated[i]
+                fail = env_cnts[i] < args.max_episode_steps if done else False
+                terminal_obs = info["terminal_observation"][i] if "terminal_observation" in info else next_obs_np[i]
+
+
+                trajectories[i].append([obs[i], actions[i], reward[i], cost[i], done, fail, terminal_obs])
+
+                if done:
+                    score = np.sum(reward_history[i])
+                    ep_len = len(reward_history[i])
+                    cost_sum = np.sum(cost_history[i])
+                    ep_cv = np.sum(cv_history[i])
+                    score_logger.write([ep_len, score])
+                    eplen_logger.write([ep_len, ep_len])
+                    cost_logger.write([ep_len, cost_sum])
+                    cv_logger.write([ep_len, ep_cv])
+                    reward_history[i].clear()
+                    cost_history[i].clear()
+                    cv_history[i].clear()
+                    env_cnts[i] = 0
+                    reset_obs = vec_env.reset(seed=args.seed)
+                    if isinstance(reset_obs, tuple):
+                        reset_obs = reset_obs[0]
+                    if isinstance(reset_obs[0], dict):
+                        obs[i] = np.concatenate([v.flatten() for v in reset_obs[i].values()])
+                    else:
+                        obs[i] = reset_obs[i]
+                else:
+                    obs[i] = next_obs_np[i]
 
         #print("[DEBUG] Updating agent...")
         v_loss, cost_v_loss, cost_var_v_loss, objective, cost_surrogate, kl, entropy, optim_case = agent.train(trajectories)
@@ -226,20 +205,19 @@ def train(args):
             "rollout/ep_cv": cv_logger.get_avg(5),
             "rollout/cost_sum_mean": cost_logger.get_avg(5),
             "rollout/cost_sum_cvar": cost_logger.get_cvar(agent.sigma_unit, 5),
-            "train/value_loss":v_loss_logger.get_avg(), 
-            "train/cost_value_loss":cost_v_loss_logger.get_avg(), 
-            "train/cost_var_value_loss":cost_var_v_loss_logger.get_avg(), 
-            "metric/objective":objective_logger.get_avg(), 
-            "metric/cost_surrogate":cost_surrogate_logger.get_avg(), 
-            "metric/kl":kl_logger.get_avg(), 
-            "metric/entropy":entropy_logger.get_avg(),
-            "metric/optim_case":wandb.Histogram(np_histogram=optim_hist), 
+            "train/value_loss": v_loss_logger.get_avg(), 
+            "train/cost_value_loss": cost_v_loss_logger.get_avg(), 
+            "train/cost_var_value_loss": cost_var_v_loss_logger.get_avg(), 
+            "metric/objective": objective_logger.get_avg(), 
+            "metric/cost_surrogate": cost_surrogate_logger.get_avg(), 
+            "metric/kl": kl_logger.get_avg(), 
+            "metric/entropy": entropy_logger.get_avg(),
+            "metric/optim_case": wandb.Histogram(np_histogram=optim_hist), 
         }
 
         #print(f"[DEBUG] log_data: {log_data}")
-        #print("[manual save] Forcing final save...")
+
         agent.save()
-        #print("[DEBUG] Forcing final save of all logs...")
         objective_logger.save()
         cost_surrogate_logger.save()
         v_loss_logger.save()
@@ -251,97 +229,13 @@ def train(args):
         eplen_logger.save()
         cv_logger.save()
         cost_logger.save()
-        #print("[DEBUG] All logs saved successfully.")
-
 
         if args.wandb:
             wandb.log(log_data)
 
 
-        if total_step - save_step >= args.save_freq:
-            save_step += args.save_freq
-            agent.save()
-            objective_logger.save()
-            cost_surrogate_logger.save()
-            v_loss_logger.save()
-            cost_v_loss_logger.save()
-            cost_var_v_loss_logger.save()
-            entropy_logger.save()
-            kl_logger.save()
-            score_logger.save()
-            eplen_logger.save()
-            cv_logger.save()
-            cost_logger.save()
-
 def test(args):
-    env = safety_gymnasium.make(args.env_name, max_episode_steps=args.max_episode_steps)
-
-    obs, info = env.reset(seed=args.seed)
-    args.obs_dim = env.observation_space.shape[0]
-    args.action_dim = env.action_space.shape[0]
-    args.action_bound_min = env.action_space.low
-    args.action_bound_max = env.action_space.high
-
-    agent = Agent(args)
-
-    scores, cvs, costs, lengths = [], [], [], []
-    epochs = 100
-
-    if args.wandb:
-        project_name = '[TRC_torch] safety_gym TEST'
-        wandb.init(project=project_name, config=args)
-        run_idx = wandb.run.name.split('-')[-1]
-        wandb.run.name = f"test_{args.env_name}"
-        print(f"[DEBUG] wandb initialized: {wandb.run.name}")
-
-    for episode in range(epochs):
-        state, _ = env.reset()
-        done = False
-        score = 0
-        cv = 0
-        cost_sum = 0
-        step = 0
-
-        while not done and step < args.max_episode_steps:
-            step += 1
-            with torch.no_grad():
-                obs_tensor = torch.from_numpy(np.array(state)).float().to(args.device)
-                _, clipped_action_tensor = agent.getAction(obs_tensor, False)
-                clipped_action = clipped_action_tensor.detach().cpu().numpy()
-
-            next_state, reward, cost, terminated, truncated, info = env.step(clipped_action)
-            #env.render()
-
-            state = next_state
-            done = terminated or truncated
-            score += reward
-            cost_sum += cost
-            cv += info.get('cost_sum', 0)
-
-        scores.append(score)
-        cvs.append(cv)
-        costs.append(cost_sum)
-        lengths.append(step)
-
-        print(f"[TEST] Episode {episode+1:03d} | Score: {score:.2f} | CV: {cv:.2f} | Cost: {cost_sum:.2f}")
-
-        if args.wandb:
-            wandb.log({
-                "episode": episode + 1,
-                "score_log": score,
-                "cv_log": cv,
-                "cost_log": cost_sum,
-                "episode_length": step
-            })
-
-    if args.wandb:
-        wandb.finish()
-
-    print(f"[TEST] Moyenne Score: {np.mean(scores):.2f} | Moyenne CV: {np.mean(cvs):.2f} | Moyenne Cost: {np.mean(costs):.2f}")
-
-
-def test(args):
-
+    # define Environment
     env = safety_gymnasium.make(args.env_name, render_mode="human",max_episode_steps=1000)
 
 
@@ -360,7 +254,7 @@ def test(args):
 
     epochs = 100
     for epoch in range(epochs):
-        state, _ = env.reset()
+        state, _ = env.reset(seed = args.seed)
         done = False
         score = 0
         cv = 0
@@ -370,7 +264,6 @@ def test(args):
             step += 1
             with torch.no_grad():
                 obs_tensor = torch.from_numpy(np.array(state)).float().to(args.device)
-                #obs_tensor = torch.tensor(state, device=args.device, dtype=torch.float32)
                 action_tensor, clipped_action_tensor = agent.getAction(obs_tensor, False)
                 action = action_tensor.detach().cpu().numpy()
                 clipped_action = clipped_action_tensor.detach().cpu().numpy()
@@ -378,11 +271,11 @@ def test(args):
             env.render()
 
             state = next_state
-            
+            #print("Terminated",terminated)
+            #print("Truncated",truncated)
             done = terminated or truncated
             score += reward
-            cv += info.get('cost_sum', 0)
-
+            cv += info.get('num_cv', 0)
             if done or step >= args.max_episode_steps:
                 break
 

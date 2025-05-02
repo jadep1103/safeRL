@@ -492,4 +492,4 @@ class Agent:
             self.cost_value.initialize()
             self.cost_std_value.initialize()
             print('[load] fail.')
-            print('[DEBUG] checkpoint file not found.')
+            print('[load] checkpoint file not found.')
