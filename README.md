@@ -1,46 +1,47 @@
 # Safe RL Project – PPO & TRC
 
-Ce projet a été réalisé dans le cadre du cours IFT-7201 (Apprentissage par renforcement) à l'Université Laval. Il s'appuie principalement sur l'article suivant :
+This project was completed as part of the course IFT-7201 (Reinforcement Learning) at Université Laval. It is primarily based on the following paper:
 
-> **TRC: Trust Region Conditional Value at Risk for Safe Reinforcement Learning** — Dohyeong Kim and Songhwai Oh, *IEEE Robotics and Automation Letters*, 2022.
+> **TRC: Trust Region Conditional Value at Risk for Safe Reinforcement Learning**  
+> Dohyeong Kim and Songhwai Oh, *IEEE Robotics and Automation Letters*, 2022.
 
-Nous avons comparé deux approches d’apprentissage par renforcement :  
-- **PPO (Proximal Policy Optimization)** : méthode classique sans contrainte,  
-- **TRC (Trust Region Conditional Value at Risk)** : méthode sécuritaire.
+We compared two reinforcement learning approaches:  
+- **PPO (Proximal Policy Optimization)** – a standard unconstrained method  
+- **TRC (Trust Region Conditional Value at Risk)** – a safe reinforcement learning method
 
-Les agents ont été évalués dans des environnements vectorisés de [Safety-Gymnasium](https://safety-gymnasium.readthedocs.io/en/latest/).
+The agents were evaluated in vectorized environments from [Safety-Gymnasium](https://safety-gymnasium.readthedocs.io/en/latest/).
 
 ---
 
-## 👤 Groupe de projet
+## 👤 Project Group
 
 - **Jade Piller-Cammal**  
-  NI : 537 306 695
+  Student ID: 537 306 695  
   📧 jade.piller-cammal.1@ulaval.ca
 
 - **Estelle Tournassat**  
-  NI : 537 305 301  
+  Student ID: 537 305 301  
   📧 estelle.tournassat.1@ulaval.ca
 
 ---
 
 ## 🔧 Installation
 
-### Option 1 — Environnement Python
+### Option 1 — Python Environment
 
-Créer un environnement virtuel compatible et installer les dépendances :
+Create a virtual environment and install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-> ⚠️ Python 3.10 recommandé pour la compatibilité avec certaines bibliothèques.
+> ⚠️ Python 3.10 is recommended for compatibility with some libraries.
 
 ---
 
 ### Option 2 — Docker
 
-Le projet peut être lancé via le Dockerfile fourni :
+The project can be run using the provided Dockerfile:
 
 ```bash
 docker build -t safe-rl .
@@ -49,7 +50,7 @@ docker run --rm -it safe-rl
 
 ---
 
-## Lancement des agents (des exemples de lancement sont inclus dans le code)
+## 🚀 Running the Agents
 
 ### PPO
 
@@ -59,34 +60,34 @@ python ppo/train.py
 
 ### TRC
 
-#### Entraînement (ex: SafetyPointGoal1)
+#### Training (example: SafetyPointGoal1)
 
 ```bash
 python trc/main.py --env_name SafetyPointGoal1-v0 --n_envs 4 --name TRC_PointGoal1 --wandb
 ```
 
-#### Test
+#### Testing
 
 ```bash
 python trc/main.py --env_name SafetyPointGoal1-v0 --n_envs 1 --test --name TRC_PointGoal1 --wandb
 ```
 
-Tous les logs sont automatiquement envoyés vers [Weights & Biases](https://wandb.ai/) si l’option `--wandb` est activée.
+> Logs are automatically sent to [Weights & Biases](https://wandb.ai/) when `--wandb` is enabled.
 
 ---
 
-## 📂 Structure du dépôt
+## 📂 Repository Structure
 
 ```
 safeRL/
-├── ppo/                ← Implémentation PPO (baseline)
-├── trc/                ← Implémentation TRC (Trust Region CVaR)
+├── ppo/                ← PPO implementation (baseline)
+├── trc/                ← TRC implementation (Trust Region CVaR)
 ├── Dockerfile
-└── requirements.txt      
+└── requirements.txt
 ```
 
 ---
 
-## 📄 Licence
+## 📄 License
 
-Le code sur lequel est basé ce projet a été distribué sous licence MIT par les auteurs de l'article.
+The code on which this project is based was released under the MIT license by the authors of the original paper.
