@@ -1,4 +1,4 @@
-# 🚀 SafeRL: Modernized Safe Reinforcement Learning Implementation
+#  SafeRL:  Safe Reinforcement Learning Implementation
 
 A modern reimplementation of the **Trust Region Conditional Value at Risk (TRC)** algorithm using updated libraries and compared against **Proximal Policy Optimization (PPO)** as a baseline. This project updates the original implementation from older MuJoCo versions to modern mujocopy &`safety-gymnasium` environments.
 
